@@ -56,6 +56,7 @@ impl<T> Deref for FifoTask<T> {
 /// It internally uses a linked list as the ready queue.
 pub struct FifoScheduler<T> {
     ready_queue: List<Arc<FifoTask<T>>>,
+    num_tasks: usize,
 }
 
 impl<T> FifoScheduler<T> {
@@ -63,6 +64,7 @@ impl<T> FifoScheduler<T> {
     pub const fn new() -> Self {
         Self {
             ready_queue: List::new(),
+            num_tasks: 0,
         }
     }
     /// get the name of scheduler
@@ -77,18 +79,30 @@ impl<T> BaseScheduler for FifoScheduler<T> {
     fn init(&mut self) {}
 
     fn add_task(&mut self, task: Self::SchedItem) {
+        self.num_tasks += 1;
         self.ready_queue.push_back(task);
     }
 
     fn remove_task(&mut self, task: &Self::SchedItem) -> Option<Self::SchedItem> {
-        unsafe { self.ready_queue.remove(task) }
+        let res = unsafe { self.ready_queue.remove(task) };
+        if res.is_some() {
+            // Only decrement the number of tasks if the task is removed.
+            self.num_tasks -= 1;
+        }
+        res
     }
 
     fn pick_next_task(&mut self) -> Option<Self::SchedItem> {
-        self.ready_queue.pop_front()
+        let res = self.ready_queue.pop_front();
+        if res.is_some() {
+            // Only decrement the number of tasks if the task is picked.
+            self.num_tasks -= 1;
+        }
+        res
     }
 
     fn put_prev_task(&mut self, prev: Self::SchedItem, _preempt: bool) {
+        self.num_tasks += 1;
         self.ready_queue.push_back(prev);
     }
 
@@ -98,5 +112,9 @@ impl<T> BaseScheduler for FifoScheduler<T> {
 
     fn set_priority(&mut self, _task: &Self::SchedItem, _prio: isize) -> bool {
         false
+    }
+
+    fn num_tasks(&self) -> usize {
+        self.num_tasks
     }
 }

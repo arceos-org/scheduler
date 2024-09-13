@@ -187,4 +187,8 @@ impl<T> BaseScheduler for CFScheduler<T> {
             false
         }
     }
+
+    fn num_tasks(&self) -> usize {
+        self.ready_queue.len()
+    }
 }
