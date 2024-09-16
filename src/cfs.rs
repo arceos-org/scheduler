@@ -2,6 +2,8 @@ use alloc::{collections::BTreeMap, sync::Arc};
 use core::ops::Deref;
 use core::sync::atomic::{AtomicIsize, Ordering};
 
+use kspin::SpinNoIrq;
+
 use crate::BaseScheduler;
 
 /// task for CFS
@@ -104,6 +106,7 @@ pub struct CFScheduler<T> {
     ready_queue: BTreeMap<(isize, isize), Arc<CFSTask<T>>>, // (vruntime, taskid)
     min_vruntime: Option<AtomicIsize>,
     id_pool: AtomicIsize,
+    lock: SpinNoIrq<()>,
 }
 
 impl<T> CFScheduler<T> {
@@ -113,6 +116,7 @@ impl<T> CFScheduler<T> {
             ready_queue: BTreeMap::new(),
             min_vruntime: None,
             id_pool: AtomicIsize::new(0_isize),
+            lock: SpinNoIrq::new(()),
         }
     }
     /// get the name of scheduler
@@ -127,6 +131,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     fn init(&mut self) {}
 
     fn add_task(&mut self, task: Self::SchedItem) {
+        let _lock = self.lock.lock();
         if self.min_vruntime.is_none() {
             self.min_vruntime = Some(AtomicIsize::new(0_isize));
         }
@@ -143,6 +148,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     }
 
     fn remove_task(&mut self, task: &Self::SchedItem) -> Option<Self::SchedItem> {
+        let _lock = self.lock.lock();
         if let Some((_, tmp)) = self
             .ready_queue
             .remove_entry(&(task.clone().get_vruntime(), task.clone().get_id()))
@@ -159,6 +165,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     }
 
     fn pick_next_task(&mut self) -> Option<Self::SchedItem> {
+        let _lock = self.lock.lock();
         if let Some((_, v)) = self.ready_queue.pop_first() {
             Some(v)
         } else {
@@ -167,6 +174,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     }
 
     fn put_prev_task(&mut self, prev: Self::SchedItem, _preempt: bool) {
+        let _lock = self.lock.lock();
         let taskid = self.id_pool.fetch_add(1, Ordering::Release);
         prev.set_id(taskid);
         self.ready_queue
@@ -174,6 +182,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     }
 
     fn task_tick(&mut self, current: &Self::SchedItem) -> bool {
+        let _lock = self.lock.lock();
         current.task_tick();
         self.min_vruntime.is_none()
             || current.get_vruntime() > self.min_vruntime.as_mut().unwrap().load(Ordering::Acquire)
@@ -189,6 +198,7 @@ impl<T> BaseScheduler for CFScheduler<T> {
     }
 
     fn num_tasks(&self) -> usize {
+        // Do not lock the ready queue for efficiency considerations.
         self.ready_queue.len()
     }
 }

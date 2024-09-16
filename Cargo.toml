@@ -11,4 +11,4 @@ documentation = "https://arceos-org.github.io/scheduler"
 
 [dependencies]
 linked_list = { git = "https://github.com/arceos-org/linked_list.git", tag = "v0.1.0" }
-
+kspin = { version = "0.1" }

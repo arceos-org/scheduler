@@ -1,6 +1,8 @@
 use alloc::sync::Arc;
 use core::ops::Deref;
+use core::sync::atomic::{AtomicUsize, Ordering};
 
+use kspin::SpinNoIrq;
 use linked_list::{Adapter, Links, List};
 
 use crate::BaseScheduler;
@@ -55,16 +57,16 @@ impl<T> Deref for FifoTask<T> {
 ///
 /// It internally uses a linked list as the ready queue.
 pub struct FifoScheduler<T> {
-    ready_queue: List<Arc<FifoTask<T>>>,
-    num_tasks: usize,
+    ready_queue: SpinNoIrq<List<Arc<FifoTask<T>>>>,
+    num_tasks: AtomicUsize,
 }
 
 impl<T> FifoScheduler<T> {
     /// Creates a new empty [`FifoScheduler`].
     pub const fn new() -> Self {
         Self {
-            ready_queue: List::new(),
-            num_tasks: 0,
+            ready_queue: SpinNoIrq::new(List::new()),
+            num_tasks: AtomicUsize::new(0),
         }
     }
     /// get the name of scheduler
@@ -79,31 +81,31 @@ impl<T> BaseScheduler for FifoScheduler<T> {
     fn init(&mut self) {}
 
     fn add_task(&mut self, task: Self::SchedItem) {
-        self.num_tasks += 1;
-        self.ready_queue.push_back(task);
+        self.num_tasks.fetch_add(1, Ordering::AcqRel);
+        self.ready_queue.lock().push_back(task);
     }
 
     fn remove_task(&mut self, task: &Self::SchedItem) -> Option<Self::SchedItem> {
-        let res = unsafe { self.ready_queue.remove(task) };
+        let res = unsafe { self.ready_queue.lock().remove(task) };
         if res.is_some() {
             // Only decrement the number of tasks if the task is removed.
-            self.num_tasks -= 1;
+            self.num_tasks.fetch_sub(1, Ordering::AcqRel);
         }
         res
     }
 
     fn pick_next_task(&mut self) -> Option<Self::SchedItem> {
-        let res = self.ready_queue.pop_front();
+        let res = self.ready_queue.lock().pop_front();
         if res.is_some() {
             // Only decrement the number of tasks if the task is picked.
-            self.num_tasks -= 1;
+            self.num_tasks.fetch_sub(1, Ordering::AcqRel);
         }
         res
     }
 
     fn put_prev_task(&mut self, prev: Self::SchedItem, _preempt: bool) {
-        self.num_tasks += 1;
-        self.ready_queue.push_back(prev);
+        self.num_tasks.fetch_add(1, Ordering::AcqRel);
+        self.ready_queue.lock().push_back(prev);
     }
 
     fn task_tick(&mut self, _current: &Self::SchedItem) -> bool {
@@ -115,6 +117,7 @@ impl<T> BaseScheduler for FifoScheduler<T> {
     }
 
     fn num_tasks(&self) -> usize {
-        self.num_tasks
+        // Don't need to lock the ready queue to get the number of tasks.
+        self.num_tasks.load(Ordering::Acquire)
     }
 }
