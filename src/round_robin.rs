@@ -2,6 +2,8 @@ use alloc::{collections::VecDeque, sync::Arc};
 use core::ops::Deref;
 use core::sync::atomic::{AtomicIsize, Ordering};
 
+use kspin::SpinNoIrq;
+
 use crate::BaseScheduler;
 
 /// A task wrapper for the [`RRScheduler`].
@@ -57,6 +59,7 @@ impl<T, const S: usize> Deref for RRTask<T, S> {
 /// [`FifoScheduler`]: crate::FifoScheduler
 pub struct RRScheduler<T, const MAX_TIME_SLICE: usize> {
     ready_queue: VecDeque<Arc<RRTask<T, MAX_TIME_SLICE>>>,
+    lock: SpinNoIrq<()>,
 }
 
 impl<T, const S: usize> RRScheduler<T, S> {
@@ -64,6 +67,7 @@ impl<T, const S: usize> RRScheduler<T, S> {
     pub const fn new() -> Self {
         Self {
             ready_queue: VecDeque::new(),
+            lock: SpinNoIrq::new(()),
         }
     }
     /// get the name of scheduler
@@ -78,10 +82,12 @@ impl<T, const S: usize> BaseScheduler for RRScheduler<T, S> {
     fn init(&mut self) {}
 
     fn add_task(&mut self, task: Self::SchedItem) {
+        let _lock = self.lock.lock();
         self.ready_queue.push_back(task);
     }
 
     fn remove_task(&mut self, task: &Self::SchedItem) -> Option<Self::SchedItem> {
+        let _lock = self.lock.lock();
         // TODO: more efficient
         self.ready_queue
             .iter()
@@ -90,10 +96,12 @@ impl<T, const S: usize> BaseScheduler for RRScheduler<T, S> {
     }
 
     fn pick_next_task(&mut self) -> Option<Self::SchedItem> {
+        let _lock = self.lock.lock();
         self.ready_queue.pop_front()
     }
 
     fn put_prev_task(&mut self, prev: Self::SchedItem, preempt: bool) {
+        let _lock = self.lock.lock();
         if prev.time_slice() > 0 && preempt {
             self.ready_queue.push_front(prev)
         } else {
@@ -109,5 +117,10 @@ impl<T, const S: usize> BaseScheduler for RRScheduler<T, S> {
 
     fn set_priority(&mut self, _task: &Self::SchedItem, _prio: isize) -> bool {
         false
+    }
+
+    fn num_tasks(&self) -> usize {
+        // Do not lock the ready queue for efficiency considerations.
+        self.ready_queue.len()
     }
 }

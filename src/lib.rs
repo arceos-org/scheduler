@@ -63,6 +63,9 @@ pub trait BaseScheduler {
     /// `current` is the current running task.
     fn task_tick(&mut self, current: &Self::SchedItem) -> bool;
 
-    /// set priority for a task
+    /// Set priority for a task.
     fn set_priority(&mut self, task: &Self::SchedItem, prio: isize) -> bool;
+
+    /// Returns the number of tasks in the scheduler.
+    fn num_tasks(&self) -> usize;
 }
