@@ -1,6 +1,7 @@
-use alloc::{collections::VecDeque, sync::Arc};
+use alloc::sync::Arc;
 use core::ops::Deref;
 use core::sync::atomic::{AtomicIsize, Ordering};
+use linked_list_r4l::{GetLinks, Links, List};
 
 use crate::BaseScheduler;
 
@@ -10,6 +11,7 @@ use crate::BaseScheduler;
 pub struct RRTask<T, const MAX_TIME_SLICE: usize> {
     inner: T,
     time_slice: AtomicIsize,
+    links: Links<Self>,
 }
 
 impl<T, const S: usize> RRTask<T, S> {
@@ -18,6 +20,7 @@ impl<T, const S: usize> RRTask<T, S> {
         Self {
             inner,
             time_slice: AtomicIsize::new(S as isize),
+            links: Links::new(),
         }
     }
 
@@ -32,6 +35,14 @@ impl<T, const S: usize> RRTask<T, S> {
     /// Returns a reference to the inner task struct.
     pub const fn inner(&self) -> &T {
         &self.inner
+    }
+}
+
+impl<T, const S: usize> GetLinks for RRTask<T, S> {
+    type EntryType = Self;
+
+    fn get_links(t: &Self) -> &Links<Self> {
+        &t.links
     }
 }
 
@@ -56,14 +67,14 @@ impl<T, const S: usize> Deref for RRTask<T, S> {
 /// [Round-Robin]: https://en.wikipedia.org/wiki/Round-robin_scheduling
 /// [`FifoScheduler`]: crate::FifoScheduler
 pub struct RRScheduler<T, const MAX_TIME_SLICE: usize> {
-    ready_queue: VecDeque<Arc<RRTask<T, MAX_TIME_SLICE>>>,
+    ready_queue: List<Arc<RRTask<T, MAX_TIME_SLICE>>>,
 }
 
 impl<T, const S: usize> RRScheduler<T, S> {
     /// Creates a new empty [`RRScheduler`].
     pub const fn new() -> Self {
         Self {
-            ready_queue: VecDeque::new(),
+            ready_queue: List::new(),
         }
     }
     /// get the name of scheduler
@@ -82,11 +93,7 @@ impl<T, const S: usize> BaseScheduler for RRScheduler<T, S> {
     }
 
     fn remove_task(&mut self, task: &Self::SchedItem) -> Option<Self::SchedItem> {
-        // TODO: more efficient
-        self.ready_queue
-            .iter()
-            .position(|t| Arc::ptr_eq(t, task))
-            .and_then(|idx| self.ready_queue.remove(idx))
+        unsafe { self.ready_queue.remove(task) }
     }
 
     fn pick_next_task(&mut self) -> Option<Self::SchedItem> {

@@ -10,4 +10,4 @@ repository = "https://github.com/arceos-org/scheduler"
 documentation = "https://arceos-org.github.io/scheduler"
 
 [dependencies]
-linked_list_r4l = { version = "0.2.0" }
+linked_list_r4l = { git = "https://github.com/arceos-org/linked_list_r4l.git", branch = "guoweikang/add_push_front" }

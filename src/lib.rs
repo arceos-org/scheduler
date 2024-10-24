@@ -27,7 +27,7 @@ pub use round_robin::{RRScheduler, RRTask};
 /// sleep, it should be removed from the scheduler.
 pub trait BaseScheduler {
     /// Type of scheduled entities. Often a task struct.
-    type SchedItem;
+    type SchedItem: linked_list_r4l::GetLinks;
 
     /// Initializes the scheduler.
     fn init(&mut self);

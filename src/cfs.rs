@@ -1,6 +1,7 @@
 use alloc::{collections::BTreeMap, sync::Arc};
 use core::ops::Deref;
 use core::sync::atomic::{AtomicIsize, Ordering};
+use linked_list_r4l::{GetLinks, Links};
 
 use crate::BaseScheduler;
 
@@ -11,6 +12,7 @@ pub struct CFSTask<T> {
     delta: AtomicIsize,
     nice: AtomicIsize,
     id: AtomicIsize,
+    links: Links<Self>,
 }
 
 // https://elixir.bootlin.com/linux/latest/source/include/linux/sched/prio.h
@@ -28,6 +30,14 @@ const NICE2WEIGHT_NEG: [isize; NICE_RANGE_NEG + 1] = [
     29154, 36291, 46273, 56483, 71755, 88761,
 ];
 
+impl<T> GetLinks for CFSTask<T> {
+    type EntryType = Self;
+
+    fn get_links(t: &Self) -> &Links<Self> {
+        &t.links
+    }
+}
+
 impl<T> CFSTask<T> {
     /// new with default values
     pub const fn new(inner: T) -> Self {
@@ -37,6 +47,7 @@ impl<T> CFSTask<T> {
             delta: AtomicIsize::new(0_isize),
             nice: AtomicIsize::new(0_isize),
             id: AtomicIsize::new(0_isize),
+            links: Links::new(),
         }
     }
 
